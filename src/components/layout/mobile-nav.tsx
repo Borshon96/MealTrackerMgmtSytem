@@ -10,12 +10,12 @@ import { logoutAction } from "@/actions/auth-actions";
 
 const adminLinks = [
   ["/admin", "Dashboard"],
+  ["/admin/meals", "Meals"],
+  ["/admin/payments", "Payments"],
   ["/admin/employees", "Employees"],
   ["/admin/users", "Users"],
-  ["/admin/meals", "Meals"],
-  ["/admin/billing", "Billing"],
-  ["/admin/payments", "Payments"],
   ["/admin/reports", "Reports"],
+  ["/admin/billing", "Billing"],
   ["/admin/settings", "Settings"],
 ] as const;
 

@@ -13,10 +13,10 @@ type NavItem = { href: string; label: string };
 const adminPrimary: NavItem[] = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/meals", label: "Meals" },
-  { href: "/admin/employees", label: "Employees" },
   { href: "/admin/payments", label: "Payments" },
+  { href: "/admin/employees", label: "Employees" },
+  { href: "/admin/users", label: "Users" },
   { href: "/admin/reports", label: "Reports" },
-  { href: "/admin/users", label: "User management" },
 ];
 
 const adminMore: NavItem[] = [

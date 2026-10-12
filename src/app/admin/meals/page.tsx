@@ -2,7 +2,12 @@ import Link from "next/link";
 import { Download, UtensilsCrossed } from "lucide-react";
 import { listEmployees } from "@/services/employee-service";
 import { getSettings } from "@/lib/settings";
-import { getWeekMealCalendar } from "@/services/meal-calendar-service";
+import {
+  getDayMealCalendar,
+  getMonthMealCalendar,
+  getWeekMealCalendar,
+} from "@/services/meal-calendar-service";
+import type { MealCalendarView } from "@/components/meals/meal-calendar";
 import { todayInputValue } from "@/lib/dates";
 import { formatBdt, splitMealCost } from "@/lib/money";
 import { AddMealsForm } from "@/components/meals/add-meals-form";
@@ -13,10 +18,12 @@ import { cn } from "@/lib/utils";
 export default async function MealsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; date?: string }>;
+  searchParams: Promise<{ week?: string; date?: string; view?: string }>;
 }) {
   const params = await searchParams;
-  const weekAnchor = params.week || params.date || todayInputValue();
+  const anchorDate = params.date || params.week || todayInputValue();
+  const view: MealCalendarView =
+    params.view === "day" || params.view === "month" ? params.view : "week";
   const [employees, settings] = await Promise.all([listEmployees(), getSettings()]);
 
   const chargePerMeal = splitMealCost(
@@ -24,7 +31,13 @@ export default async function MealsPage({
     settings.employeeSharePct
   ).employeeChargePaisa;
 
-  const calendar = await getWeekMealCalendar(weekAnchor, chargePerMeal);
+  const dayCalendar = view === "day" ? await getDayMealCalendar(anchorDate, chargePerMeal) : null;
+  const weekCalendar =
+    view === "week" ? await getWeekMealCalendar(anchorDate, chargePerMeal) : null;
+  const monthCalendar =
+    view === "month" ? await getMonthMealCalendar(anchorDate, chargePerMeal) : null;
+
+  const calendar = dayCalendar ?? weekCalendar ?? monthCalendar!;
 
   const activeEmployees = employees
     .filter((e) => e.status === "ACTIVE")
@@ -65,10 +78,11 @@ export default async function MealsPage({
           employeeSharePct={settings.employeeSharePct}
         />
         <MealCalendar
-          weekAnchor={weekAnchor}
-          weekStart={calendar.weekStart}
-          weekLabel={calendar.weekLabel}
+          view={view}
+          anchorDate={calendar.anchorDate}
+          periodLabel={calendar.periodLabel}
           days={calendar.days}
+          monthCells={monthCalendar?.monthCells}
           summary={calendar.summary}
           chargePerMealPaisa={chargePerMeal}
         />

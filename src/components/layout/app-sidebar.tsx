@@ -21,12 +21,12 @@ type NavItem = { href: string; label: string; icon: React.ComponentType<{ classN
 
 const adminNav: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/meals", label: "Meals", icon: Utensils },
+  { href: "/admin/payments", label: "Payments", icon: Wallet },
   { href: "/admin/employees", label: "Employees", icon: Users },
   { href: "/admin/users", label: "Users", icon: UserCog },
-  { href: "/admin/meals", label: "Meals", icon: Utensils },
-  { href: "/admin/billing", label: "Billing", icon: Receipt },
-  { href: "/admin/payments", label: "Payments", icon: Wallet },
   { href: "/admin/reports", label: "Reports", icon: FileBarChart },
+  { href: "/admin/billing", label: "Billing", icon: Receipt },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

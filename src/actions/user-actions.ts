@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { userSchema } from "@/lib/validations";
 import * as userService from "@/services/user-service";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
 export async function createUserAction(
   _prev: ActionResult | null,
@@ -25,13 +25,13 @@ export async function createUserAction(
     if (!parsed.success) {
       return { ok: false, error: parsed.error.errors[0]?.message ?? "Invalid input" };
     }
-    await userService.createUser({
+    const user = await userService.createUser({
       ...parsed.data,
       password: parsed.data.password || "",
       employeeId: parsed.data.employeeId || null,
     });
     revalidatePath("/admin/users");
-    return { ok: true };
+    return { ok: true, id: user.id };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to create user";
     if (message.includes("Unique constraint")) {
@@ -66,7 +66,7 @@ export async function updateUserAction(
       employeeId: parsed.data.employeeId || null,
     });
     revalidatePath("/admin/users");
-    return { ok: true };
+    return { ok: true, id };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to update user";
     if (message.includes("Unique constraint")) {

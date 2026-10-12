@@ -9,6 +9,7 @@ import {
   endOfMonth,
   format,
   isSameMonth,
+  isToday,
   parseISO,
   startOfMonth,
   startOfWeek,
@@ -361,6 +362,7 @@ export function AddMealsForm({
                   const dateStr = format(day, "yyyy-MM-dd");
                   const selected = selectedDates.includes(dateStr);
                   const inMonth = isSameMonth(day, monthCursor);
+                  const todayCell = inMonth && isToday(day);
                   const blocked =
                     inMonth && selectedIds.length > 0 && isDateBlockedForSelection(dateStr);
                   return (
@@ -371,21 +373,30 @@ export function AddMealsForm({
                       title={
                         blocked
                           ? "Meal already added for a selected employee on this date"
-                          : undefined
+                          : todayCell
+                            ? "Today"
+                            : undefined
                       }
                       onClick={() => toggleCalendarDate(dateStr)}
                       className={cn(
-                        "mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-sm",
+                        "relative mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-sm",
                         !inMonth && "invisible",
                         blocked &&
                           "cursor-not-allowed bg-muted text-muted-foreground line-through opacity-60",
                         !blocked &&
                           selected &&
                           "bg-brand font-semibold text-brand-foreground",
-                        !blocked && !selected && "hover:bg-secondary"
+                        !blocked &&
+                          !selected &&
+                          todayCell &&
+                          "ring-2 ring-brand font-semibold",
+                        !blocked && !selected && !todayCell && "hover:bg-secondary"
                       )}
                     >
                       {format(day, "d")}
+                      {todayCell && !selected && !blocked ? (
+                        <span className="absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-brand" />
+                      ) : null}
                     </button>
                   );
                 })}
