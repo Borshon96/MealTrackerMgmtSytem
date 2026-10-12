@@ -17,11 +17,14 @@ export default async function MealsPage({
 }) {
   const params = await searchParams;
   const weekAnchor = params.week || params.date || todayInputValue();
-  const [employees, settings, calendar] = await Promise.all([
-    listEmployees(),
-    getSettings(),
-    getWeekMealCalendar(weekAnchor),
-  ]);
+  const [employees, settings] = await Promise.all([listEmployees(), getSettings()]);
+
+  const chargePerMeal = splitMealCost(
+    settings.mealPricePaisa,
+    settings.employeeSharePct
+  ).employeeChargePaisa;
+
+  const calendar = await getWeekMealCalendar(weekAnchor, chargePerMeal);
 
   const activeEmployees = employees
     .filter((e) => e.status === "ACTIVE")
@@ -30,11 +33,6 @@ export default async function MealsPage({
       fullName: e.fullName,
       employeeCode: e.employeeCode,
     }));
-
-  const chargePerMeal = splitMealCost(
-    settings.mealPricePaisa,
-    settings.employeeSharePct
-  ).employeeChargePaisa;
 
   return (
     <div className="space-y-6">
@@ -67,6 +65,7 @@ export default async function MealsPage({
           employeeSharePct={settings.employeeSharePct}
         />
         <MealCalendar
+          weekAnchor={weekAnchor}
           weekStart={calendar.weekStart}
           weekLabel={calendar.weekLabel}
           days={calendar.days}

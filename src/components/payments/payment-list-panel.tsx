@@ -17,8 +17,8 @@ function methodLabel(method: string | null) {
 
 function StatusPill({ status }: { status: EmployeePaymentRow["status"] }) {
   const config = {
-    DUE: { label: "Due", dot: "bg-brand", className: "text-foreground" },
-    PAID: { label: "Paid", dot: "bg-gray-300", className: "text-muted-foreground" },
+    DUE: { label: "Due", dot: "bg-due", className: "text-due font-medium" },
+    PAID: { label: "Paid", dot: "bg-paid", className: "text-paid font-medium" },
     ADVANCE: { label: "Advance", dot: "bg-sky-400", className: "text-sky-800" },
   }[status];
 
@@ -84,10 +84,10 @@ export function PaymentListPanel({
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl bg-brand px-4 py-3">
-            <p className="text-xs font-medium text-brand-foreground/80">Outstanding amount</p>
-            <p className="text-xl font-bold">{formatBdt(summary.outstandingPaisa)}</p>
-            <p className="text-xs text-brand-foreground/80">
+          <div className="rounded-xl bg-due px-4 py-3">
+            <p className="text-xs font-medium text-due-foreground">Outstanding amount</p>
+            <p className="text-xl font-bold text-due-foreground">{formatBdt(summary.outstandingPaisa)}</p>
+            <p className="text-xs text-due-foreground">
               {summary.dueEmployees} employee{summary.dueEmployees === 1 ? "" : "s"} with a payment due
             </p>
           </div>
@@ -158,7 +158,7 @@ export function PaymentListPanel({
                     key={row.employeeId}
                     className={cn(
                       "border-b border-border",
-                      isDue && "bg-brand-soft/40"
+                      isDue && "bg-due-soft"
                     )}
                   >
                     <td className="px-4 py-3 text-muted-foreground">
@@ -179,7 +179,9 @@ export function PaymentListPanel({
                           </span>
                         </span>
                       ) : (
-                        formatBdt(row.duePaisa)
+                        <span className={isDue ? "text-due" : row.status === "PAID" ? "text-paid" : undefined}>
+                          {formatBdt(row.duePaisa)}
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -207,13 +209,16 @@ export function PaymentListPanel({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
         <span>Showing {filtered.length} employee{filtered.length === 1 ? "" : "s"}</span>
-        <span>Total outstanding {formatBdt(totalOutstanding)}</span>
+        <span>
+          Total outstanding{" "}
+          <span className="font-semibold text-due">{formatBdt(totalOutstanding)}</span>
+        </span>
       </div>
 
       <div className="space-y-1 border-t border-border bg-secondary/30 px-4 py-3 text-[11px] text-muted-foreground">
         <p>
-          <span className="mr-1 inline-block h-2 w-2 rounded-sm bg-brand align-middle" />
-          Lime rows have an outstanding payment. Due amounts are not recorded payments.
+          <span className="mr-1 inline-block h-2 w-2 rounded-sm bg-due align-middle" />
+          Red rows have an outstanding payment. Due amounts are not recorded payments.
         </p>
         <p>
           A negative balance is an advance credit. Paid and advance balances do not require payment.

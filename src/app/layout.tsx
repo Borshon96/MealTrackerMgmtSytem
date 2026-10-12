@@ -21,8 +21,18 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${poppins.variable} ${jetbrains.variable} h-full`}>
-      <body className="flex min-h-full flex-col font-sans">{children}<Toaster /></body>
+    <html
+      lang="en"
+      className={`${poppins.variable} ${jetbrains.variable} h-full`}
+      suppressHydrationWarning
+    >
+      <body
+        className="flex min-h-full flex-col font-sans"
+        suppressHydrationWarning
+      >
+        {children}
+        <Toaster />
+      </body>
     </html>
   );
 }

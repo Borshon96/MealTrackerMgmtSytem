@@ -54,6 +54,47 @@ export async function syncEmployeeStoredCredit(
   });
 }
 
+/**
+ * Which meal rows should show as "due" on the calendar: newest meals first,
+ * count = ceil(employee due ÷ standard per-meal charge).
+ */
+export async function buildDueMealRecordIdMap(
+  employeeIds: string[],
+  chargePerMealPaisa: number,
+  duePaisaByEmployee: Map<string, number>
+): Promise<Map<string, Set<string>>> {
+  const result = new Map<string, Set<string>>();
+  for (const id of employeeIds) result.set(id, new Set());
+
+  if (employeeIds.length === 0 || chargePerMealPaisa <= 0) return result;
+
+  const allMeals = await prisma.mealRecord.findMany({
+    where: { employeeId: { in: employeeIds }, status: "MEAL_TAKEN" },
+    orderBy: [{ mealDate: "desc" }, { createdAt: "desc" }],
+    select: { id: true, employeeId: true },
+  });
+
+  const mealIdsByEmployee = new Map<string, string[]>();
+  for (const id of employeeIds) mealIdsByEmployee.set(id, []);
+  for (const meal of allMeals) {
+    mealIdsByEmployee.get(meal.employeeId)?.push(meal.id);
+  }
+
+  for (const employeeId of employeeIds) {
+    const duePaisa = duePaisaByEmployee.get(employeeId) ?? 0;
+    const mealIds = mealIdsByEmployee.get(employeeId) ?? [];
+    if (duePaisa <= 0 || mealIds.length === 0) continue;
+
+    const dueMealCount = Math.min(
+      mealIds.length,
+      Math.ceil(duePaisa / chargePerMealPaisa)
+    );
+    result.set(employeeId, new Set(mealIds.slice(0, dueMealCount)));
+  }
+
+  return result;
+}
+
 export async function resyncAllEmployeeStoredCredits() {
   const employees = await prisma.employee.findMany({ select: { id: true } });
   for (const emp of employees) {

@@ -30,7 +30,11 @@ export default async function AdminDashboardPage() {
         />
         <StatCard title="Weekly office subsidy" value={formatBdt(data.weekOfficeSubsidyPaisa)} />
         <StatCard title="Payments this week" value={formatBdt(data.weekPaymentsPaisa)} />
-        <StatCard title="Outstanding dues" value={formatBdt(data.outstandingDuesPaisa)} />
+        <StatCard
+          title="Outstanding dues"
+          value={formatBdt(data.outstandingDuesPaisa)}
+          valueClassName="text-due"
+        />
         <StatCard title="Unapplied credits" value={formatBdt(data.unappliedCreditsPaisa)} />
       </div>
     </div>

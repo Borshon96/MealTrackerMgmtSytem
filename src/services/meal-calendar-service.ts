@@ -1,7 +1,10 @@
 import { addDays, format, startOfWeek } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { toDateOnly, formatDate } from "@/lib/dates";
-import { getEmployeeMealLedger } from "@/services/meal-ledger-service";
+import {
+  buildDueMealRecordIdMap,
+  getEmployeeMealLedger,
+} from "@/services/meal-ledger-service";
 
 export type CalendarMealEntry = {
   id: string;
@@ -24,7 +27,10 @@ export type CalendarDay = {
   allPaid: boolean;
 };
 
-export async function getWeekMealCalendar(anchorDateStr: string) {
+export async function getWeekMealCalendar(
+  anchorDateStr: string,
+  chargePerMealPaisa: number
+) {
   const anchor = toDateOnly(anchorDateStr);
   // Saturday start to match design (Sat–Fri)
   const weekStart = startOfWeek(anchor, { weekStartsOn: 6 });
@@ -53,8 +59,13 @@ export async function getWeekMealCalendar(anchorDateStr: string) {
   const ledgerEntries = await Promise.all(
     employeeIds.map(async (id) => [id, await getEmployeeMealLedger(id)] as const)
   );
-  const dueByEmployee = new Map(
-    ledgerEntries.map(([id, ledger]) => [id, ledger.duePaisa > 0])
+  const duePaisaByEmployee = new Map(
+    ledgerEntries.map(([id, ledger]) => [id, ledger.duePaisa])
+  );
+  const dueMealIdsByEmployee = await buildDueMealRecordIdMap(
+    employeeIds,
+    chargePerMealPaisa,
+    duePaisaByEmployee
   );
 
   const byDate = new Map<string, CalendarMealEntry[]>();
@@ -64,7 +75,8 @@ export async function getWeekMealCalendar(anchorDateStr: string) {
     const dateStr = formatDate(record.mealDate);
     const list = byDate.get(dateStr);
     if (!list) continue;
-    const hasDue = dueByEmployee.get(record.employeeId) ?? false;
+    const dueMealIds = dueMealIdsByEmployee.get(record.employeeId) ?? new Set();
+    const isDueMeal = dueMealIds.has(record.id);
     list.push({
       id: record.id,
       employeeId: record.employeeId,
@@ -72,7 +84,7 @@ export async function getWeekMealCalendar(anchorDateStr: string) {
       employeeCode: record.employee.employeeCode,
       chargePaisa: record.employeeChargePaisa,
       status: record.status,
-      paymentStatus: hasDue ? "DUE" : "PAID",
+      paymentStatus: isDueMeal ? "DUE" : "PAID",
     });
   }
 

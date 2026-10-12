@@ -33,7 +33,11 @@ export default async function MyDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="This week's meals" value={String(data.weekMealCount)} />
         <StatCard title="This week's charges" value={formatBdt(data.weekChargesPaisa)} />
-        <StatCard title="Outstanding dues" value={formatBdt(data.outstandingPaisa)} />
+        <StatCard
+          title="Outstanding dues"
+          value={formatBdt(data.outstandingPaisa)}
+          valueClassName="text-due"
+        />
         <StatCard
           title="Total paid"
           value={formatBdt(data.totalPaidPaisa)}
