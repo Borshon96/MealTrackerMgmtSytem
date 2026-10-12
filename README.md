@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Office Meal Tracker (v1)
 
-## Getting Started
+Local-first office meal management for Windows. One Next.js app with SQLite: daily meal register, weekly billing, simple payments, admin portal, and employee self-service.
 
-First, run the development server:
+## Features (v1)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Admin and employee login (bcrypt passwords, DB sessions)
+- Employee and user management
+- Daily meal register with price/share snapshots
+- Weekly bill generation and period close
+- Payment recording with FIFO allocation and simple credit balance
+- Employee portal (own meals, bills, payments, password change)
+- Outstanding dues report + CSV exports
+- Settings for meal price and contribution shares (৳)
+
+## Requirements
+
+- Node.js 20+ recommended (21 works for local use)
+- npm
+
+## Quick start (Windows)
+
+1. Copy environment file:
+
+```bat
+copy .env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install and prepare the database:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bat
+npm install
+mkdir data
+npx prisma generate
+npx prisma db push
+npm run db:seed
+npm run setup:admin
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Non-interactive admin creation (optional):
 
-## Learn More
+```bat
+set ADMIN_USERNAME=admin
+set ADMIN_EMAIL=admin@local
+set ADMIN_PASSWORD=your-secure-password
+npm run setup:admin
+```
 
-To learn more about Next.js, take a look at the following resources:
+3. Start the app:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bat
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Or double-click `run.bat` (still run `npm run setup:admin` once for the first admin).
 
-## Deploy on Vercel
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Production-style local run
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bat
+npm run build
+npm run start
+```
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | Development server on 127.0.0.1:3000 |
+| `npm run build` / `start` | Production build and serve |
+| `npm run setup:admin` | Create the first admin interactively |
+| `npm run db:seed` | Seed default settings |
+| `npm test` | Run Vitest unit tests |
+
+## Money rules
+
+- Stored as integer **paisa** (1 BDT = 100 paisa)
+- Displayed as ৳
+- Meal price and share percentages are snapshotted on each meal record
+- Odd splits: employee share is rounded; office gets the remainder
+
+## Assumptions / limitations
+
+- Single local instance; do not run multiple servers against the same SQLite file
+- Bound to localhost by default
+- No provider ledger, office-funding module, audit log UI, or backup UI in v1
+- Closed billing periods cannot be regenerated in v1
+
+## Phase 2 backlog
+
+Provider ledger, office funding, audit trail, backup/restore, payment reversals, bill reopen/corrections, fuller report suite.

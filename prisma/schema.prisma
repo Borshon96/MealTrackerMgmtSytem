@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  username            String    @unique
+  email               String    @unique
+  passwordHash        String
+  role                String
+  status              String    @default("ACTIVE")
+  employeeId          String?   @unique
+  employee            Employee? @relation(fields: [employeeId], references: [id])
+  forcePasswordChange Boolean   @default(false)
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  sessions            Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Employee {
+  id           String            @id @default(cuid())
+  employeeCode String            @unique
+  fullName     String
+  department   String?
+  phone        String?
+  joiningDate  DateTime
+  status       String            @default("ACTIVE")
+  notes        String?
+  creditPaisa  Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User?
+  meals        MealRecord[]
+  bills        EmployeeBill[]
+  payments     EmployeePayment[]
+}
+
+model MealRecord {
+  id                  String   @id @default(cuid())
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id])
+  mealDate            DateTime
+  status              String   @default("PENDING")
+  unitPricePaisa      Int
+  employeeSharePct    Int
+  officeSharePct      Int
+  employeeChargePaisa Int      @default(0)
+  officeSubsidyPaisa  Int      @default(0)
+  remarks             String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([employeeId, mealDate])
+  @@index([mealDate])
+  @@index([status])
+}
+
+model BillingPeriod {
+  id        String         @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  status    String         @default("OPEN")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  bills     EmployeeBill[]
+
+  @@unique([startDate, endDate])
+  @@index([status])
+}
+
+model EmployeeBill {
+  id                   String        @id @default(cuid())
+  periodId             String
+  period               BillingPeriod @relation(fields: [periodId], references: [id])
+  employeeId           String
+  employee             Employee      @relation(fields: [employeeId], references: [id])
+  mealCount            Int           @default(0)
+  employeeChargesPaisa Int           @default(0)
+  previousDuePaisa     Int           @default(0)
+  paymentsPaisa        Int           @default(0)
+  outstandingPaisa     Int           @default(0)
+  status               String        @default("PENDING")
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@unique([periodId, employeeId])
+  @@index([employeeId])
+  @@index([status])
+}
+
+model EmployeePayment {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  paidAt      DateTime
+  amountPaisa Int
+  method      String
+  reference   String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([employeeId])
+  @@index([paidAt])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
