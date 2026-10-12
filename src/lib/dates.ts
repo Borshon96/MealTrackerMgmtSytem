@@ -23,6 +23,25 @@ export function todayInputValue(): string {
   return format(new Date(), "yyyy-MM-dd");
 }
 
+/** True when the calendar date is strictly before today (local). */
+export function isPastCalendarDate(dateStr: string): boolean {
+  return dateStr < todayInputValue();
+}
+
+export function nowDateTimeLocalValue(): string {
+  return format(new Date(), "yyyy-MM-dd'T'HH:mm");
+}
+
+export function formatDateTime(value: Date | string): string {
+  const d = typeof value === "string" ? parseISO(value) : value;
+  return format(d, "dd/MM/yyyy · h:mm a");
+}
+
+export function formatDateShort(value: Date | string): string {
+  const d = typeof value === "string" ? parseISO(value) : value;
+  return format(d, "dd/MM/yyyy");
+}
+
 /** Inclusive yyyy-MM-dd list for a date range (calendar days, timezone-safe). */
 export function datesInRange(startStr: string, endStr: string): string[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startStr) || !/^\d{4}-\d{2}-\d{2}$/.test(endStr)) {

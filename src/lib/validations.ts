@@ -25,13 +25,13 @@ export const userSchema = z.object({
   forcePasswordChange: z.boolean().optional(),
 });
 
-export const mealStatusSchema = z.enum(["MEAL_TAKEN", "NOT_TAKEN", "PENDING"]);
+export const mealStatusSchema = z.enum(["MEAL_TAKEN", "NOT_TAKEN", "PENDING", "CANCELLED"]);
 
 export const paymentSchema = z.object({
   employeeId: z.string().min(1),
   paidAt: z.string().min(1),
   amountBdt: z.coerce.number().positive("Amount must be greater than 0"),
-  method: z.enum(["CASH", "BKASH", "NAGAD", "BANK_TRANSFER", "OTHER"]),
+  method: z.enum(["CASH", "BKASH", "NAGAD", "BANK_TRANSFER", "CARD", "OTHER"]),
   reference: z.string().max(120).optional().or(z.literal("")),
   notes: z.string().max(500).optional().or(z.literal("")),
 });

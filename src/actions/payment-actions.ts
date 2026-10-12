@@ -26,10 +26,17 @@ export async function recordPaymentAction(
     }
     await paymentService.recordPayment(parsed.data);
     revalidatePath("/admin/payments");
+    revalidatePath("/admin/payments/history");
     revalidatePath("/admin/billing");
+    revalidatePath("/admin/meals");
     revalidatePath("/admin");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record payment" };
   }
+}
+
+export async function getEmployeeBalanceAction(employeeId: string) {
+  await requireAdmin();
+  return paymentService.getEmployeeMealBalance(employeeId);
 }

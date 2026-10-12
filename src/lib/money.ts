@@ -8,8 +8,8 @@ export function paisaToBdt(paisa: number): number {
   return paisa / 100;
 }
 
-export function formatBdt(paisa: number): string {
-  const amount = paisaToBdt(paisa);
+export function formatBdt(paisa: number | null | undefined): string {
+  const amount = paisaToBdt(paisa ?? 0);
   return `৳${amount.toLocaleString("en-BD", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -28,6 +28,26 @@ export function splitMealCost(
   const employeeChargePaisa = Math.round((unitPricePaisa * employeeSharePct) / 100);
   const officeSubsidyPaisa = unitPricePaisa - employeeChargePaisa;
   return { employeeChargePaisa, officeSubsidyPaisa };
+}
+
+/**
+ * Single source of truth: meal charges from MEAL_TAKEN rows vs sum of recorded payments.
+ * Cancelled meals are excluded from charges; cancelling reduces due by exactly that meal amount.
+ */
+export function computeMealLedgerBalance(mealChargesPaisa: number, totalPaidPaisa: number) {
+  const net = mealChargesPaisa - totalPaidPaisa;
+  return {
+    duePaisa: Math.max(0, net),
+    creditPaisa: Math.max(0, -net),
+  };
+}
+
+export type MealLedgerStatus = "DUE" | "PAID" | "ADVANCE";
+
+export function mealLedgerStatus(duePaisa: number, creditPaisa: number): MealLedgerStatus {
+  if (creditPaisa > 0) return "ADVANCE";
+  if (duePaisa > 0) return "DUE";
+  return "PAID";
 }
 
 export function computeBillStatus(

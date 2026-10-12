@@ -1,24 +1,26 @@
-import { getDailyMealRegister } from "@/services/meal-service";
+import Link from "next/link";
+import { Download, UtensilsCrossed } from "lucide-react";
 import { listEmployees } from "@/services/employee-service";
 import { getSettings } from "@/lib/settings";
-import { todayInputValue, formatDate } from "@/lib/dates";
-import { PageHeader } from "@/components/ui/page-header";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { MealRegister } from "@/components/meals/meal-register";
+import { getWeekMealCalendar } from "@/services/meal-calendar-service";
+import { todayInputValue } from "@/lib/dates";
+import { formatBdt, splitMealCost } from "@/lib/money";
 import { AddMealsForm } from "@/components/meals/add-meals-form";
+import { MealCalendar } from "@/components/meals/meal-calendar";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default async function MealsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ week?: string; date?: string }>;
 }) {
-  const { date: dateParam } = await searchParams;
-  const date = dateParam || todayInputValue();
-  const [register, employees, settings] = await Promise.all([
-    getDailyMealRegister(date),
+  const params = await searchParams;
+  const weekAnchor = params.week || params.date || todayInputValue();
+  const [employees, settings, calendar] = await Promise.all([
     listEmployees(),
     getSettings(),
+    getWeekMealCalendar(weekAnchor),
   ]);
 
   const activeEmployees = employees
@@ -29,50 +31,49 @@ export default async function MealsPage({
       employeeCode: e.employeeCode,
     }));
 
+  const chargePerMeal = splitMealCost(
+    settings.mealPricePaisa,
+    settings.employeeSharePct
+  ).employeeChargePaisa;
+
   return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Meals"
-        description="Add meals for one or more employees across a date range or selected dates, then review the daily register."
-      />
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Employee meals</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Add meal entries, track the week, and keep payments in sync.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-brand-foreground">
+            <UtensilsCrossed className="h-3.5 w-3.5" />
+            {formatBdt(chargePerMeal)} / meal
+          </span>
+          <Link
+            href="/api/export/meals"
+            className={cn(buttonVariants({ variant: "outline" }), "h-9 gap-2 rounded-xl bg-white")}
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </Link>
+        </div>
+      </div>
 
-      <AddMealsForm
-        employees={activeEmployees}
-        mealPricePaisa={settings.mealPricePaisa}
-        employeeSharePct={settings.employeeSharePct}
-      />
-
-      <section>
-        <h3 className="mb-4 text-lg font-semibold">Daily register</h3>
-        <form className="mb-6 flex flex-wrap items-end gap-2">
-          <div>
-            <label htmlFor="date" className="mb-1 block text-sm text-muted-foreground">
-              Date
-            </label>
-            <Input id="date" name="date" type="date" defaultValue={date} />
-          </div>
-          <Button type="submit" variant="outline">
-            Load
-          </Button>
-        </form>
-
-        <MealRegister
-          date={date}
-          rows={register.rows.map(({ employee, record }) => ({
-            employee,
-            record: record
-              ? {
-                  status: record.status as "MEAL_TAKEN" | "NOT_TAKEN" | "PENDING",
-                  employeeChargePaisa: record.employeeChargePaisa,
-                }
-              : null,
-          }))}
-          summary={register.summary}
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]">
+        <AddMealsForm
+          employees={activeEmployees}
+          mealPricePaisa={settings.mealPricePaisa}
+          employeeSharePct={settings.employeeSharePct}
         />
-        <p className="mt-4 text-xs text-muted-foreground">
-          Showing register for {formatDate(register.date)}
-        </p>
-      </section>
+        <MealCalendar
+          weekStart={calendar.weekStart}
+          weekLabel={calendar.weekLabel}
+          days={calendar.days}
+          summary={calendar.summary}
+          chargePerMealPaisa={chargePerMeal}
+        />
+      </div>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
 import { startOfWeek, endOfWeek } from "date-fns";
+import { getEmployeeMealLedger } from "@/services/meal-ledger-service";
+import { getPaymentSummary } from "@/services/payment-service";
 
 export async function getAdminDashboard() {
   const today = toDateOnly(new Date());
@@ -11,8 +13,7 @@ export async function getAdminDashboard() {
     activeEmployees,
     todayMeals,
     weekMeals,
-    outstandingAgg,
-    creditAgg,
+    paymentSummary,
     weekPayments,
   ] = await Promise.all([
     prisma.employee.count({ where: { status: "ACTIVE" } }),
@@ -25,8 +26,7 @@ export async function getAdminDashboard() {
         mealDate: { gte: toDateOnly(weekStart), lte: toDateOnly(weekEnd) },
       },
     }),
-    prisma.employeeBill.aggregate({ _sum: { outstandingPaisa: true } }),
-    prisma.employee.aggregate({ _sum: { creditPaisa: true } }),
+    getPaymentSummary(),
     prisma.employeePayment.aggregate({
       where: { paidAt: { gte: toDateOnly(weekStart), lte: toDateOnly(weekEnd) } },
       _sum: { amountPaisa: true },
@@ -46,8 +46,8 @@ export async function getAdminDashboard() {
     weekCostPaisa: weekCost,
     weekEmployeeChargesPaisa: weekEmployeeCharges,
     weekOfficeSubsidyPaisa: weekOfficeSubsidy,
-    outstandingDuesPaisa: outstandingAgg._sum.outstandingPaisa ?? 0,
-    unappliedCreditsPaisa: creditAgg._sum.creditPaisa ?? 0,
+    outstandingDuesPaisa: paymentSummary.outstandingPaisa,
+    unappliedCreditsPaisa: paymentSummary.advancePaisa,
     weekPaymentsPaisa: weekPayments._sum.amountPaisa ?? 0,
   };
 }
@@ -56,8 +56,7 @@ export async function getEmployeeDashboard(employeeId: string) {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 0 });
 
-  const [employee, weekMeals, outstandingAgg, paymentsAgg, recentMeals, recentPayments] =
-    await Promise.all([
+  const [employee, weekMeals, ledger, recentMeals, recentPayments] = await Promise.all([
       prisma.employee.findUniqueOrThrow({ where: { id: employeeId } }),
       prisma.mealRecord.findMany({
         where: {
@@ -66,14 +65,7 @@ export async function getEmployeeDashboard(employeeId: string) {
         },
         orderBy: { mealDate: "desc" },
       }),
-      prisma.employeeBill.aggregate({
-        where: { employeeId },
-        _sum: { outstandingPaisa: true },
-      }),
-      prisma.employeePayment.aggregate({
-        where: { employeeId },
-        _sum: { amountPaisa: true },
-      }),
+      getEmployeeMealLedger(employeeId),
       prisma.mealRecord.findMany({
         where: { employeeId },
         orderBy: { mealDate: "desc" },
@@ -91,9 +83,9 @@ export async function getEmployeeDashboard(employeeId: string) {
     employee,
     weekMealCount: taken.length,
     weekChargesPaisa: taken.reduce((s, m) => s + m.employeeChargePaisa, 0),
-    outstandingPaisa: outstandingAgg._sum.outstandingPaisa ?? 0,
-    totalPaidPaisa: paymentsAgg._sum.amountPaisa ?? 0,
-    creditPaisa: employee.creditPaisa,
+    outstandingPaisa: ledger.duePaisa,
+    totalPaidPaisa: ledger.totalPaidPaisa,
+    creditPaisa: ledger.creditPaisa,
     recentMeals,
     recentPayments,
   };

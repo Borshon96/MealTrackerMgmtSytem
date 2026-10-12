@@ -90,6 +90,7 @@ export async function addMealsForSelectionAction(
     });
 
     revalidatePath("/admin/meals");
+    revalidatePath("/admin/payments");
     return {
       ok: true,
       count: result.written,
@@ -100,5 +101,25 @@ export async function addMealsForSelectionAction(
       ok: false,
       error: e instanceof Error ? e.message : "Failed to add meals",
     };
+  }
+}
+
+export async function getTakenMealDatesAction(
+  employeeIds: string[]
+): Promise<Record<string, string[]>> {
+  await requireAdmin();
+  return mealService.getTakenMealDatesByEmployeeIds(employeeIds);
+}
+
+export async function cancelMealAction(mealRecordId: string): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    if (!mealRecordId) return { ok: false, error: "Missing meal" };
+    await mealService.cancelMealRecord(mealRecordId);
+    revalidatePath("/admin/meals");
+    revalidatePath("/admin/payments");
+    return { ok: true, message: "Meal cancelled. The charge was credited to the employee account." };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to cancel meal" };
   }
 }

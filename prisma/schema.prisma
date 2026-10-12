@@ -107,18 +107,21 @@ model EmployeeBill {
 }
 
 model EmployeePayment {
-  id          String   @id @default(cuid())
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id])
-  paidAt      DateTime
-  amountPaisa Int
-  method      String
-  reference   String?
-  notes       String?
-  createdAt   DateTime @default(now())
+  id                  String   @id @default(cuid())
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id])
+  paidAt              DateTime
+  amountPaisa         Int
+  appliedToMealsPaisa Int      @default(0)
+  advanceCreditPaisa  Int      @default(0)
+  method              String
+  reference           String?
+  notes               String?
+  createdAt           DateTime @default(now())
 
   @@index([employeeId])
   @@index([paidAt])
+  @@index([createdAt])
 }
 
 model Setting {

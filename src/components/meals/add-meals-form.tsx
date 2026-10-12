@@ -1,22 +1,43 @@
 "use client";
 
-import { useMemo, useState, useActionState, useEffect } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addMealsForSelectionAction, type ActionResult } from "@/actions/meal-actions";
+import {
+  addDays,
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  format,
+  isSameMonth,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from "date-fns";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, UtensilsCrossed, X } from "lucide-react";
+import {
+  addMealsForSelectionAction,
+  getTakenMealDatesAction,
+  type ActionResult,
+} from "@/actions/meal-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { FormMessage } from "@/components/forms/form-message";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { datesInRange, todayInputValue } from "@/lib/dates";
+import { employeeInitials, employeeShortName } from "@/lib/employee-display";
 import { formatBdt, splitMealCost } from "@/lib/money";
+import { cn } from "@/lib/utils";
 
 type EmployeeOption = {
   id: string;
   fullName: string;
   employeeCode: string;
 };
+
+function formatCompactDates(dates: string[]) {
+  if (dates.length === 0) return "—";
+  return dates.map((d) => format(parseISO(`${d}T12:00:00`), "d MMM")).join(", ");
+}
 
 export function AddMealsForm({
   employees,
@@ -29,12 +50,15 @@ export function AddMealsForm({
 }) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [dateMode, setDateMode] = useState<"range" | "selected">("range");
+  const [query, setQuery] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dateMode, setDateMode] = useState<"range" | "selected">("selected");
   const [startDate, setStartDate] = useState(todayInputValue());
   const [endDate, setEndDate] = useState(todayInputValue());
-  const [pickedDate, setPickedDate] = useState(todayInputValue());
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
-  const [status, setStatus] = useState<"MEAL_TAKEN" | "NOT_TAKEN" | "PENDING">("MEAL_TAKEN");
+  const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
+  const [expandedLines, setExpandedLines] = useState<Set<string>>(new Set());
+  const [takenByEmployee, setTakenByEmployee] = useState<Record<string, string[]>>({});
 
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     addMealsForSelectionAction,
@@ -43,40 +67,87 @@ export function AddMealsForm({
 
   useEffect(() => {
     if (state?.ok) {
+      setSelectedIds([]);
+      setSelectedDates([]);
       router.refresh();
     }
   }, [state, router]);
 
-  const resolvedDates = useMemo(() => {
-    if (dateMode === "selected") {
-      return [...selectedDates].sort();
+  useEffect(() => {
+    if (selectedIds.length === 0) {
+      setTakenByEmployee({});
+      return;
     }
-    if (!startDate || !endDate) return [];
+    let cancelled = false;
+    (async () => {
+      const map = await getTakenMealDatesAction(selectedIds);
+      if (!cancelled) setTakenByEmployee(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIds]);
+
+  const employeeHasMealOn = (employeeId: string, dateStr: string) =>
+    takenByEmployee[employeeId]?.includes(dateStr) ?? false;
+
+  const isDateBlockedForSelection = (dateStr: string) =>
+    selectedIds.length > 0 && selectedIds.some((id) => employeeHasMealOn(id, dateStr));
+
+  const datesAvailableForEmployee = (employeeId: string, dates: string[]) =>
+    dates.filter((d) => !employeeHasMealOn(employeeId, d));
+
+  useEffect(() => {
+    setSelectedDates((prev) => prev.filter((d) => !isDateBlockedForSelection(d)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prune when taken dates load
+  }, [takenByEmployee, selectedIds]);
+
+  const perMealCharge = useMemo(
+    () => splitMealCost(mealPricePaisa, employeeSharePct).employeeChargePaisa,
+    [mealPricePaisa, employeeSharePct]
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter(
+      (e) =>
+        e.fullName.toLowerCase().includes(q) ||
+        e.employeeCode.toLowerCase().includes(q)
+    );
+  }, [employees, query]);
+
+  const selectedEmployees = useMemo(
+    () => employees.filter((e) => selectedIds.includes(e.id)),
+    [employees, selectedIds]
+  );
+
+  const resolvedDates = useMemo(() => {
+    if (dateMode === "selected") return [...selectedDates].sort();
     return datesInRange(startDate, endDate);
   }, [dateMode, selectedDates, startDate, endDate]);
 
-  const perMeal = useMemo(() => {
-    if (status !== "MEAL_TAKEN") {
-      return { employeeChargePaisa: 0, officeSubsidyPaisa: 0, unitPricePaisa: mealPricePaisa };
-    }
-    const split = splitMealCost(mealPricePaisa, employeeSharePct);
-    return { ...split, unitPricePaisa: mealPricePaisa };
-  }, [status, mealPricePaisa, employeeSharePct]);
+  const lines = useMemo(
+    () =>
+      selectedEmployees.map((emp) => {
+        const empDates = datesAvailableForEmployee(emp.id, resolvedDates);
+        return {
+          id: emp.id,
+          name: emp.fullName,
+          days: empDates.length,
+          skipped: resolvedDates.length - empDates.length,
+          total: empDates.length * perMealCharge,
+          datesLabel: formatCompactDates(empDates),
+        };
+      }),
+    [selectedEmployees, resolvedDates, perMealCharge, takenByEmployee]
+  );
 
-  const calc = useMemo(() => {
-    const employeeCount = selectedIds.length;
-    const dayCount = resolvedDates.length;
-    const mealCount = employeeCount * dayCount;
-    return {
-      employeeCount,
-      dayCount,
-      mealCount,
-      totalCostPaisa: mealCount * perMeal.unitPricePaisa,
-      employeeChargesPaisa: mealCount * perMeal.employeeChargePaisa,
-      officeSubsidyPaisa: mealCount * perMeal.officeSubsidyPaisa,
-      perEmployeePaisa: dayCount * perMeal.employeeChargePaisa,
-    };
-  }, [selectedIds.length, resolvedDates.length, perMeal]);
+  const totalMeals = lines.reduce((s, l) => s + l.days, 0);
+  const totalPaisa = totalMeals * perMealCharge;
+  const blockedInSelection = resolvedDates.filter(isDateBlockedForSelection).length;
+
+  const allSelected = employees.length > 0 && selectedIds.length === employees.length;
 
   function toggleEmployee(id: string) {
     setSelectedIds((prev) =>
@@ -84,241 +155,332 @@ export function AddMealsForm({
     );
   }
 
-  function selectAllEmployees() {
-    setSelectedIds(employees.map((e) => e.id));
+  function toggleSelectAll() {
+    if (allSelected) setSelectedIds([]);
+    else setSelectedIds(employees.map((e) => e.id));
   }
 
-  function clearEmployees() {
-    setSelectedIds([]);
-  }
-
-  function addSelectedDate() {
-    if (!pickedDate) return;
+  function toggleCalendarDate(dateStr: string) {
+    if (isDateBlockedForSelection(dateStr)) return;
     setSelectedDates((prev) =>
-      prev.includes(pickedDate) ? prev : [...prev, pickedDate].sort()
+      prev.includes(dateStr) ? prev.filter((d) => d !== dateStr) : [...prev, dateStr].sort()
     );
   }
 
-  function removeSelectedDate(date: string) {
-    setSelectedDates((prev) => prev.filter((d) => d !== date));
+  function toggleLineExpand(id: string) {
+    setExpandedLines((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
+  const monthStart = startOfMonth(monthCursor);
+  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+  const calendarDays = eachDayOfInterval({
+    start: gridStart,
+    end: addDays(startOfWeek(endOfMonth(monthStart), { weekStartsOn: 0 }), 6),
+  });
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Add meals for employees</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={formAction} className="space-y-6">
-          <input type="hidden" name="dateMode" value={dateMode} />
-          <input type="hidden" name="status" value={status} />
-          {selectedIds.map((id) => (
-            <input key={id} type="hidden" name="employeeIds" value={id} />
-          ))}
-          {dateMode === "range" ? (
-            <>
-              <input type="hidden" name="startDate" value={startDate} />
-              <input type="hidden" name="endDate" value={endDate} />
-            </>
-          ) : (
-            selectedDates.map((d) => (
-              <input key={d} type="hidden" name="dates" value={d} />
-            ))
-          )}
+    <div className="mealdesk-card p-5">
+      <div className="flex items-center gap-2">
+        <UtensilsCrossed className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Add meal for employee</h3>
+      </div>
 
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label>Employees</Label>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={selectAllEmployees}>
-                  Select all
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={clearEmployees}>
-                  Clear
-                </Button>
-              </div>
-            </div>
-            {employees.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No active employees available.</p>
-            ) : (
-              <div className="max-h-56 overflow-y-auto rounded-lg border p-3">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {employees.map((emp) => {
-                    const checked = selectedIds.includes(emp.id);
-                    return (
-                      <label
-                        key={emp.id}
-                        className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/60"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleEmployee(emp.id)}
-                          className="mt-0.5"
-                        />
-                        <span>
-                          <span className="font-medium">{emp.fullName}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {emp.employeeCode}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {selectedIds.length} employee(s) selected
+      <form action={formAction} className="mt-5 space-y-5">
+        <input type="hidden" name="dateMode" value={dateMode} />
+        <input type="hidden" name="status" value="MEAL_TAKEN" />
+        {selectedIds.map((id) => (
+          <input key={id} type="hidden" name="employeeIds" value={id} />
+        ))}
+        {dateMode === "range" ? (
+          <>
+            <input type="hidden" name="startDate" value={startDate} />
+            <input type="hidden" name="endDate" value={endDate} />
+          </>
+        ) : (
+          selectedDates.map((d) => <input key={d} type="hidden" name="dates" value={d} />)
+        )}
+
+        {/* Employees */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Employees
             </p>
+            <p className="text-xs text-muted-foreground">{selectedIds.length} selected</p>
           </div>
 
-          <div className="space-y-3">
-            <Label>Date selection</Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setDropdownOpen(true);
+              }}
+              onFocus={() => setDropdownOpen(true)}
+              placeholder="Select employee / search"
+              className="h-10 rounded-xl border-border bg-white pl-9 text-sm"
+            />
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
+
+          {selectedEmployees.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={dateMode === "range" ? "default" : "outline"}
-                onClick={() => setDateMode("range")}
-              >
-                Date range
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={dateMode === "selected" ? "default" : "outline"}
-                onClick={() => setDateMode("selected")}
-              >
-                Selected dates
-              </Button>
+              {selectedEmployees.map((emp) => (
+                <button
+                  key={emp.id}
+                  type="button"
+                  onClick={() => toggleEmployee(emp.id)}
+                  className="mealdesk-chip"
+                >
+                  {employeeShortName(emp.fullName)}
+                  <X className="h-3 w-3 text-muted-foreground" />
+                </button>
+              ))}
             </div>
+          ) : null}
 
-            {dateMode === "range" ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">Start date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endDate">End date</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
+          {dropdownOpen ? (
+            <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+              <label className="flex cursor-pointer items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-secondary/80">
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+                <span className="font-medium">Select all</span>
+              </label>
+              <div className="max-h-44 overflow-y-auto">
+                {filtered.map((emp) => {
+                  const checked = selectedIds.includes(emp.id);
+                  return (
+                    <label
+                      key={emp.id}
+                      className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-secondary/60"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleEmployee(emp.id)}
+                      />
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
+                        {employeeInitials(emp.fullName)}
+                      </span>
+                      <span className="font-medium">{emp.fullName}</span>
+                    </label>
+                  );
+                })}
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="pickedDate">Add date</Label>
-                    <Input
-                      id="pickedDate"
-                      type="date"
-                      value={pickedDate}
-                      onChange={(e) => setPickedDate(e.target.value)}
-                    />
-                  </div>
-                  <Button type="button" variant="outline" onClick={addSelectedDate}>
-                    Add date
-                  </Button>
-                </div>
-                {selectedDates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No dates selected yet.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedDates.map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => removeSelectedDate(d)}
-                        className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
-                        title="Remove date"
-                      >
-                        {d} ×
-                      </button>
-                    ))}
-                  </div>
+              <button
+                type="button"
+                className="w-full border-t border-border px-3 py-2 text-left text-xs text-muted-foreground hover:bg-secondary"
+                onClick={() => setDropdownOpen(false)}
+              >
+                Done
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Dates */}
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Date selection
+          </p>
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-secondary p-1">
+            <button
+              type="button"
+              onClick={() => setDateMode("range")}
+              className={cn(
+                "rounded-lg px-3 py-2 text-sm font-medium",
+                dateMode === "range" ? "bg-white shadow-sm" : "text-muted-foreground"
+              )}
+            >
+              Date range
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateMode("selected")}
+              className={cn(
+                "rounded-lg px-3 py-2 text-sm font-medium",
+                dateMode === "selected" ? "bg-white shadow-sm" : "text-muted-foreground"
+              )}
+            >
+              Individual dates
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Start date</p>
+              <Input
+                type="date"
+                value={startDate}
+                disabled={dateMode === "selected"}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={cn(
+                  "h-10 rounded-xl",
+                  dateMode === "selected" && "cursor-not-allowed opacity-50"
                 )}
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">{resolvedDates.length} day(s) selected</p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="mealStatus">Meal status</Label>
-              <select
-                id="mealStatus"
-                value={status}
-                onChange={(e) =>
-                  setStatus(e.target.value as "MEAL_TAKEN" | "NOT_TAKEN" | "PENDING")
-                }
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              >
-                <option value="MEAL_TAKEN">Meal taken</option>
-                <option value="NOT_TAKEN">Not taken</option>
-                <option value="PENDING">Pending</option>
-              </select>
+              />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="remarks">Remarks (optional)</Label>
-              <Textarea id="remarks" name="remarks" rows={2} />
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">End date</p>
+              <Input
+                type="date"
+                value={endDate}
+                disabled={dateMode === "selected"}
+                onChange={(e) => setEndDate(e.target.value)}
+                className={cn(
+                  "h-10 rounded-xl",
+                  dateMode === "selected" && "cursor-not-allowed opacity-50"
+                )}
+              />
             </div>
           </div>
 
-          <div className="rounded-lg border bg-muted/30 p-4">
-            <p className="mb-3 text-sm font-medium">Payment calculation</p>
-            <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                Employees × days:{" "}
-                <strong>
-                  {calc.employeeCount} × {calc.dayCount} = {calc.mealCount} meals
-                </strong>
+          {dateMode === "selected" ? (
+            <div className="rounded-xl border border-border p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <button type="button" onClick={() => setMonthCursor((m) => subMonths(m, 1))}>
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-sm font-semibold">{format(monthCursor, "MMMM yyyy")}</span>
+                <button type="button" onClick={() => setMonthCursor((m) => addMonths(m, 1))}>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
-              <div>
-                Charge / meal (employee): <strong>{formatBdt(perMeal.employeeChargePaisa)}</strong>
+              <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-muted-foreground">
+                {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                  <div key={d}>{d}</div>
+                ))}
               </div>
-              <div>
-                Per employee (selected days): <strong>{formatBdt(calc.perEmployeePaisa)}</strong>
-              </div>
-              <div>
-                Total employee charges: <strong>{formatBdt(calc.employeeChargesPaisa)}</strong>
-              </div>
-              <div>
-                Total office subsidy: <strong>{formatBdt(calc.officeSubsidyPaisa)}</strong>
-              </div>
-              <div>
-                Total meal cost: <strong>{formatBdt(calc.totalCostPaisa)}</strong>
+              <div className="grid grid-cols-7 gap-1">
+                {calendarDays.map((day) => {
+                  const dateStr = format(day, "yyyy-MM-dd");
+                  const selected = selectedDates.includes(dateStr);
+                  const inMonth = isSameMonth(day, monthCursor);
+                  const blocked =
+                    inMonth && selectedIds.length > 0 && isDateBlockedForSelection(dateStr);
+                  return (
+                    <button
+                      key={dateStr}
+                      type="button"
+                      disabled={!inMonth || blocked}
+                      title={
+                        blocked
+                          ? "Meal already added for a selected employee on this date"
+                          : undefined
+                      }
+                      onClick={() => toggleCalendarDate(dateStr)}
+                      className={cn(
+                        "mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-sm",
+                        !inMonth && "invisible",
+                        blocked &&
+                          "cursor-not-allowed bg-muted text-muted-foreground line-through opacity-60",
+                        !blocked &&
+                          selected &&
+                          "bg-brand font-semibold text-brand-foreground",
+                        !blocked && !selected && "hover:bg-secondary"
+                      )}
+                    >
+                      {format(day, "d")}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Uses current settings (meal price and share %). Existing meal rows keep their original
-              snapshotted price.
+          ) : null}
+
+          <p className="text-xs text-muted-foreground">
+            {resolvedDates.length} date{resolvedDates.length === 1 ? "" : "s"} selected
+            {selectedIds.length > 0 && blockedInSelection > 0
+              ? ` · ${blockedInSelection} already booked (disabled on calendar)`
+              : ""}
+            {dateMode === "selected" && selectedIds.length > 0
+              ? " · Crossed-out days already have a meal for a selected employee."
+              : ""}
+          </p>
+        </div>
+
+        {/* Payment calculation */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Payment calculation
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Automatic · {formatBdt(perMealCharge)} / meal
             </p>
           </div>
 
-          <div className="space-y-2">
-            <FormMessage result={state} />
-            <Button
-              type="submit"
-              disabled={
-                pending || selectedIds.length === 0 || resolvedDates.length === 0 || employees.length === 0
-              }
-            >
-              {pending ? "Saving..." : "Add meals"}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+          {lines.length === 0 || resolvedDates.length === 0 || totalMeals === 0 ? (
+            <p className="rounded-xl bg-secondary px-3 py-4 text-sm text-muted-foreground">
+              {resolvedDates.length > 0 && totalMeals === 0
+                ? "Every selected date already has a meal for the chosen employee(s). Pick other dates."
+                : "Select employees and dates to preview charges."}
+            </p>
+          ) : (
+            <div className="divide-y divide-border rounded-xl border border-border">
+              {lines.map((line) => {
+                const open = expandedLines.has(line.id);
+                return (
+                  <div key={line.id} className="px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{line.name}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {line.days} day{line.days === 1 ? "" : "s"}
+                            {line.skipped > 0 ? ` (${line.skipped} skipped)` : ""}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleLineExpand(line.id)}
+                            className="font-medium text-foreground underline-offset-2 hover:underline"
+                          >
+                            {open ? "Hide" : "Show"}
+                          </button>
+                        </div>
+                        {open ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {line.datesLabel} | {line.days} × {formatBdt(perMealCharge)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <p className="text-sm font-bold">{formatBdt(line.total)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between px-3 py-3">
+                <span className="text-sm font-semibold">
+                  Total · {totalMeals} meal{totalMeals === 1 ? "" : "s"}
+                </span>
+                <span className="text-base font-bold">{formatBdt(totalPaisa)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <FormMessage result={state} />
+
+        <Button
+          type="submit"
+          className="h-11 w-full rounded-xl text-sm font-semibold"
+          disabled={
+            pending ||
+            selectedIds.length === 0 ||
+            resolvedDates.length === 0 ||
+            totalMeals === 0 ||
+            employees.length === 0
+          }
+        >
+          <Plus className="h-4 w-4" />
+          {pending ? "Adding..." : "Add Meal"}
+        </Button>
+      </form>
+    </div>
   );
 }
