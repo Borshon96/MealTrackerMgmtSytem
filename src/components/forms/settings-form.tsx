@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormMessage } from "@/components/forms/form-message";
+import { HolidayCountryPicker } from "@/components/settings/holiday-country-picker";
 
 export function SettingsForm({
   settings,
@@ -16,6 +17,7 @@ export function SettingsForm({
     officeSharePct: number;
     weekStartDay: number;
     companyName: string;
+    holidayCountryCodes: string[];
   };
 }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(
@@ -70,6 +72,7 @@ export function SettingsForm({
           required
         />
       </div>
+      <HolidayCountryPicker initialCodes={settings.holidayCountryCodes} />
       <div className="space-y-2">
         <Label htmlFor="officeSharePct">Office share %</Label>
         <Input

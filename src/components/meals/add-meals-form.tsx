@@ -28,6 +28,13 @@ import { datesInRange, todayInputValue } from "@/lib/dates";
 import { employeeInitials, employeeShortName } from "@/lib/employee-display";
 import { formatBdt, splitMealCost } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import type { HolidayOnDate } from "@/lib/holiday-types";
+import {
+  CALENDAR_WEEK_STARTS_ON,
+  CALENDAR_WEEKDAY_HEADERS,
+  isWeekendDay,
+  isWeekendGridColumn,
+} from "@/lib/work-week";
 
 type EmployeeOption = {
   id: string;
@@ -44,10 +51,12 @@ export function AddMealsForm({
   employees,
   mealPricePaisa,
   employeeSharePct,
+  holidaysByDate = {},
 }: {
   employees: EmployeeOption[];
   mealPricePaisa: number;
   employeeSharePct: number;
+  holidaysByDate?: Record<string, HolidayOnDate[]>;
 }) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -178,11 +187,31 @@ export function AddMealsForm({
   }
 
   const monthStart = startOfMonth(monthCursor);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+  const gridStart = startOfWeek(monthStart, {
+    weekStartsOn: CALENDAR_WEEK_STARTS_ON,
+  });
   const calendarDays = eachDayOfInterval({
     start: gridStart,
-    end: addDays(startOfWeek(endOfMonth(monthStart), { weekStartsOn: 0 }), 6),
+    end: addDays(
+      startOfWeek(endOfMonth(monthStart), {
+        weekStartsOn: CALENDAR_WEEK_STARTS_ON,
+      }),
+      6
+    ),
   });
+
+  const monthHolidayEntries = useMemo(() => {
+    const monthKey = format(monthCursor, "yyyy-MM");
+    return Object.entries(holidaysByDate)
+      .filter(([dateStr]) => dateStr.startsWith(monthKey))
+      .sort(([a], [b]) => a.localeCompare(b));
+  }, [holidaysByDate, monthCursor]);
+
+  function holidayTitle(dateStr: string) {
+    const list = holidaysByDate[dateStr];
+    if (!list?.length) return undefined;
+    return list.map((h) => `${h.localName || h.name} (${h.countryCode})`).join(", ");
+  }
 
   return (
     <div className="mealdesk-card p-5">
@@ -353,8 +382,13 @@ export function AddMealsForm({
                 </button>
               </div>
               <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-muted-foreground">
-                {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-                  <div key={d}>{d}</div>
+                {CALENDAR_WEEKDAY_HEADERS.map((d, i) => (
+                  <div
+                    key={d}
+                    className={cn(isWeekendGridColumn(i) && "font-semibold text-slate-600")}
+                  >
+                    {d}
+                  </div>
                 ))}
               </div>
               <div className="grid grid-cols-7 gap-1">
@@ -365,6 +399,8 @@ export function AddMealsForm({
                   const todayCell = inMonth && isToday(day);
                   const blocked =
                     inMonth && selectedIds.length > 0 && isDateBlockedForSelection(dateStr);
+                  const isHoliday = inMonth && (holidaysByDate[dateStr]?.length ?? 0) > 0;
+                  const isWeekend = inMonth && isWeekendDay(day);
                   return (
                     <button
                       key={dateStr}
@@ -373,9 +409,9 @@ export function AddMealsForm({
                       title={
                         blocked
                           ? "Meal already added for a selected employee on this date"
-                          : todayCell
-                            ? "Today"
-                            : undefined
+                          : holidayTitle(dateStr) ??
+                            (isWeekend ? "Weekend (Friday or Saturday)" : undefined) ??
+                            (todayCell ? "Today" : undefined)
                       }
                       onClick={() => toggleCalendarDate(dateStr)}
                       className={cn(
@@ -384,23 +420,52 @@ export function AddMealsForm({
                         blocked &&
                           "cursor-not-allowed bg-muted text-muted-foreground line-through opacity-60",
                         !blocked &&
+                          isHoliday &&
+                          !selected &&
+                          "bg-amber-50 ring-1 ring-amber-300/80",
+                        !blocked &&
+                          isWeekend &&
+                          !isHoliday &&
+                          !selected &&
+                          "bg-slate-100 ring-1 ring-slate-200",
+                        !blocked &&
                           selected &&
                           "bg-brand font-semibold text-brand-foreground",
                         !blocked &&
                           !selected &&
                           todayCell &&
+                          !isHoliday &&
                           "ring-2 ring-brand font-semibold",
-                        !blocked && !selected && !todayCell && "hover:bg-secondary"
+                        !blocked &&
+                          !selected &&
+                          !todayCell &&
+                          !isHoliday &&
+                          !isWeekend &&
+                          "hover:bg-secondary"
                       )}
                     >
                       {format(day, "d")}
-                      {todayCell && !selected && !blocked ? (
+                      {isHoliday && !selected && !blocked ? (
+                        <span className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-amber-500" />
+                      ) : null}
+                      {todayCell && !selected && !blocked && !isHoliday ? (
                         <span className="absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-brand" />
                       ) : null}
                     </button>
                   );
                 })}
               </div>
+              {monthHolidayEntries.length > 0 ? (
+                <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto border-t border-border pt-2 text-[10px] leading-snug text-amber-950">
+                  {monthHolidayEntries.map(([dateStr, list]) => (
+                    <li key={dateStr}>
+                      <span className="font-semibold">{format(parseISO(`${dateStr}T12:00:00`), "d MMM")}</span>
+                      {": "}
+                      {list.map((h) => h.localName || h.name).join(" · ")}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : null}
 

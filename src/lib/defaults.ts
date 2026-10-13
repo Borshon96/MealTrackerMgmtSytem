@@ -4,6 +4,7 @@ export const SETTING_KEYS = {
   officeSharePct: "office_share_pct",
   weekStartDay: "week_start_day",
   companyName: "company_name",
+  holidayCountryCodes: "holiday_country_codes",
 } as const;
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
@@ -12,4 +13,5 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   [SETTING_KEYS.officeSharePct]: "50",
   [SETTING_KEYS.weekStartDay]: "0",
   [SETTING_KEYS.companyName]: "Office Meal Tracker",
+  [SETTING_KEYS.holidayCountryCodes]: "BD",
 };

@@ -8,7 +8,21 @@ import {
   startOfWeek,
 } from "date-fns";
 import { prisma } from "@/lib/prisma";
-import { toDateOnly, formatDate } from "@/lib/dates";
+import {
+  formatCalendarDate,
+  formatDate,
+  parseCalendarDate,
+  toDateOnly,
+} from "@/lib/dates";
+import {
+  CALENDAR_WEEK_STARTS_ON,
+  isWeekendDay,
+} from "@/lib/work-week";
+import {
+  attachHolidaysToCalendarDays,
+  getHolidaysByDateInRange,
+  type HolidayOnDate,
+} from "@/services/holiday-service";
 import {
   buildDueMealRecordIdMap,
   getEmployeeMealLedger,
@@ -33,6 +47,8 @@ export type CalendarDay = {
   mealCount: number;
   duePaisa: number;
   allPaid: boolean;
+  holidays: HolidayOnDate[];
+  isWeekend: boolean;
 };
 
 export type MonthCalendarCell = CalendarDay & { inMonth: boolean };
@@ -59,7 +75,8 @@ function summarizeDays(days: CalendarDay[]): MealCalendarSummary {
 
 async function buildMealCalendarDays(
   daySpecs: DaySpec[],
-  chargePerMealPaisa: number
+  chargePerMealPaisa: number,
+  holidayCountryCodes: string[] = []
 ): Promise<CalendarDay[]> {
   if (daySpecs.length === 0) return [];
 
@@ -109,7 +126,7 @@ async function buildMealCalendarDays(
     });
   }
 
-  return daySpecs.map(({ date, dateStr }) => {
+  const baseDays = daySpecs.map(({ date, dateStr }) => {
     const meals = byDate.get(dateStr) ?? [];
     const duePaisa = meals
       .filter((m) => m.paymentStatus === "DUE")
@@ -123,14 +140,35 @@ async function buildMealCalendarDays(
       mealCount: meals.length,
       duePaisa,
       allPaid: meals.length > 0 && duePaisa === 0,
+      holidays: [] as HolidayOnDate[],
+      isWeekend: isWeekendDay(date),
     };
   });
+
+  if (holidayCountryCodes.length === 0 || daySpecs.length === 0) return baseDays;
+
+  const fromDateStr = daySpecs[0].dateStr;
+  const toDateStr = daySpecs[daySpecs.length - 1].dateStr;
+  const holidaysByDate = await getHolidaysByDateInRange(
+    fromDateStr,
+    toDateStr,
+    holidayCountryCodes
+  );
+  return attachHolidaysToCalendarDays(baseDays, holidaysByDate);
 }
 
-export async function getDayMealCalendar(anchorDateStr: string, chargePerMealPaisa: number) {
-  const anchor = toDateOnly(anchorDateStr);
-  const dateStr = format(anchor, "yyyy-MM-dd");
-  const days = await buildMealCalendarDays([{ date: anchor, dateStr }], chargePerMealPaisa);
+export async function getDayMealCalendar(
+  anchorDateStr: string,
+  chargePerMealPaisa: number,
+  holidayCountryCodes: string[] = []
+) {
+  const anchor = parseCalendarDate(anchorDateStr);
+  const dateStr = formatCalendarDate(anchor);
+  const days = await buildMealCalendarDays(
+    [{ date: anchor, dateStr }],
+    chargePerMealPaisa,
+    holidayCountryCodes
+  );
 
   return {
     anchorDate: dateStr,
@@ -140,15 +178,25 @@ export async function getDayMealCalendar(anchorDateStr: string, chargePerMealPai
   };
 }
 
-export async function getWeekMealCalendar(anchorDateStr: string, chargePerMealPaisa: number) {
-  const anchor = toDateOnly(anchorDateStr);
-  const weekStartDate = startOfWeek(anchor, { weekStartsOn: 6 });
+export async function getWeekMealCalendar(
+  anchorDateStr: string,
+  chargePerMealPaisa: number,
+  holidayCountryCodes: string[] = []
+) {
+  const anchor = parseCalendarDate(anchorDateStr);
+  const weekStartDate = startOfWeek(anchor, {
+    weekStartsOn: CALENDAR_WEEK_STARTS_ON,
+  });
   const daySpecs: DaySpec[] = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(weekStartDate, i);
-    return { date: d, dateStr: format(d, "yyyy-MM-dd") };
+    return { date: d, dateStr: formatCalendarDate(d) };
   });
 
-  const days = await buildMealCalendarDays(daySpecs, chargePerMealPaisa);
+  const days = await buildMealCalendarDays(
+    daySpecs,
+    chargePerMealPaisa,
+    holidayCountryCodes
+  );
 
   return {
     anchorDate: anchorDateStr,
@@ -160,20 +208,33 @@ export async function getWeekMealCalendar(anchorDateStr: string, chargePerMealPa
   };
 }
 
-export async function getMonthMealCalendar(anchorDateStr: string, chargePerMealPaisa: number) {
-  const anchor = toDateOnly(anchorDateStr);
+export async function getMonthMealCalendar(
+  anchorDateStr: string,
+  chargePerMealPaisa: number,
+  holidayCountryCodes: string[] = []
+) {
+  const anchor = parseCalendarDate(anchorDateStr);
   const monthStart = startOfMonth(anchor);
   const monthEnd = endOfMonth(anchor);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 6 });
-  const gridEnd = addDays(startOfWeek(monthEnd, { weekStartsOn: 6 }), 6);
+  const gridStart = startOfWeek(monthStart, {
+    weekStartsOn: CALENDAR_WEEK_STARTS_ON,
+  });
+  const gridEnd = addDays(
+    startOfWeek(monthEnd, { weekStartsOn: CALENDAR_WEEK_STARTS_ON }),
+    6
+  );
 
   const gridDates = eachDayOfInterval({ start: gridStart, end: gridEnd });
   const daySpecs: DaySpec[] = gridDates.map((date) => ({
     date,
-    dateStr: format(date, "yyyy-MM-dd"),
+    dateStr: formatCalendarDate(date),
   }));
 
-  const built = await buildMealCalendarDays(daySpecs, chargePerMealPaisa);
+  const built = await buildMealCalendarDays(
+    daySpecs,
+    chargePerMealPaisa,
+    holidayCountryCodes
+  );
   const monthCells: MonthCalendarCell[] = built.map((day, i) => ({
     ...day,
     inMonth: isSameMonth(daySpecs[i].date, monthStart),
@@ -182,8 +243,8 @@ export async function getMonthMealCalendar(anchorDateStr: string, chargePerMealP
   const inMonthDays = monthCells.filter((c) => c.inMonth);
 
   return {
-    anchorDate: format(anchor, "yyyy-MM-dd"),
-    monthStart: format(monthStart, "yyyy-MM-dd"),
+    anchorDate: formatCalendarDate(anchor),
+    monthStart: formatCalendarDate(monthStart),
     periodLabel: format(monthStart, "MMMM yyyy"),
     monthCells,
     days: inMonthDays,

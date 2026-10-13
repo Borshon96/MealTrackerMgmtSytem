@@ -43,6 +43,7 @@ export const settingsSchema = z
     officeSharePct: z.coerce.number().int().min(0).max(100),
     weekStartDay: z.coerce.number().int().min(0).max(6),
     companyName: z.string().min(1).max(120),
+    holidayCountryCodes: z.string().max(500).optional().or(z.literal("")),
   })
   .refine((d) => d.employeeSharePct + d.officeSharePct === 100, {
     message: "Employee and office shares must total 100%",

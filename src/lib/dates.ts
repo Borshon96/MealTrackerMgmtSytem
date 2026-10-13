@@ -23,6 +23,18 @@ export function todayInputValue(): string {
   return format(new Date(), "yyyy-MM-dd");
 }
 
+/** Parse yyyy-MM-dd as local calendar date (avoids UTC day shift). */
+export function parseCalendarDate(dateStr: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return parseISO(dateStr);
+  }
+  return parseISO(`${dateStr}T12:00:00`);
+}
+
+export function formatCalendarDate(date: Date): string {
+  return format(date, "yyyy-MM-dd");
+}
+
 /** True when the calendar date is strictly before today (local). */
 export function isPastCalendarDate(dateStr: string): boolean {
   return dateStr < todayInputValue();

@@ -19,11 +19,15 @@ export async function updateSettingsAction(
       officeSharePct: formData.get("officeSharePct"),
       weekStartDay: formData.get("weekStartDay"),
       companyName: formData.get("companyName"),
+      holidayCountryCodes: formData.get("holidayCountryCodes") ?? "",
     });
     if (!parsed.success) {
       return { ok: false, error: parsed.error.errors[0]?.message ?? "Invalid settings" };
     }
-    await updateSettings(parsed.data);
+    await updateSettings({
+      ...parsed.data,
+      holidayCountryCodes: parsed.data.holidayCountryCodes ?? "",
+    });
     revalidatePath("/admin/settings");
     revalidatePath("/admin/meals");
     return { ok: true };

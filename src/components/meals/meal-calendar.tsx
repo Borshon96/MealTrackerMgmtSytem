@@ -20,11 +20,29 @@ import type {
   MealCalendarSummary,
   MonthCalendarCell,
 } from "@/services/meal-calendar-service";
+import type { HolidayOnDate } from "@/services/holiday-service";
+import { formatDateShort } from "@/lib/dates";
+import {
+  CALENDAR_WEEKDAY_HEADERS,
+  isWeekendGridColumn,
+} from "@/lib/work-week";
 import { CancelMealButton } from "@/components/meals/cancel-meal-button";
+import { HolidayStrip } from "@/components/meals/holiday-strip";
 
 export type MealCalendarView = "day" | "week" | "month";
 
 const WEEK_VISIBLE_MEALS = 4;
+
+function collectPeriodHolidays(
+  days: CalendarDay[],
+  monthCells?: MonthCalendarCell[]
+): { dateStr: string; holidays: HolidayOnDate[] }[] {
+  const source = monthCells?.filter((c) => c.inMonth) ?? days;
+  return source
+    .filter((d) => (d.holidays?.length ?? 0) > 0)
+    .map((d) => ({ dateStr: d.dateStr, holidays: d.holidays ?? [] }))
+    .sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+}
 
 function adminMealsHref(view: MealCalendarView, date: string) {
   return `/admin/meals?view=${view}&date=${date}`;
@@ -105,16 +123,26 @@ function DayColumn({ day }: { day: CalendarDay }) {
     <div
       className={cn(
         "flex min-w-[120px] flex-col bg-white",
+        day.isWeekend && !day.isToday && "bg-slate-100/90",
         day.isToday && "bg-brand-soft/30"
       )}
     >
       <div
         className={cn(
           "flex items-center justify-between border-b border-border px-3 py-2.5",
+          day.isWeekend && !day.isToday && "bg-slate-200/50",
           day.isToday && "bg-brand-soft"
         )}
       >
-        <span className="text-xs font-medium text-muted-foreground">{day.dayLabel}</span>
+        <span
+          className={cn(
+            "text-xs font-medium text-muted-foreground",
+            day.isWeekend && "font-semibold"
+          )}
+        >
+          {day.dayLabel}
+          {day.isWeekend ? " · Weekend" : ""}
+        </span>
         <span
           className={cn(
             "flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold",
@@ -124,6 +152,8 @@ function DayColumn({ day }: { day: CalendarDay }) {
           {day.dayNumber}
         </span>
       </div>
+
+      <HolidayStrip holidays={day.holidays} />
 
       <div className="flex flex-1 flex-col gap-1.5 p-2">
         <DayMealsList day={day} limit={WEEK_VISIBLE_MEALS} />
@@ -153,6 +183,7 @@ export function MealCalendar({
   monthCells,
   summary,
   chargePerMealPaisa,
+  holidayCountryCodes = [],
 }: {
   view: MealCalendarView;
   anchorDate: string;
@@ -161,10 +192,12 @@ export function MealCalendar({
   monthCells?: MonthCalendarCell[];
   summary: MealCalendarSummary;
   chargePerMealPaisa: number;
+  holidayCountryCodes?: string[];
 }) {
   const router = useRouter();
   const today = todayInputValue();
   const anchor = parseISO(`${anchorDate}T12:00:00`);
+  const periodHolidays = collectPeriodHolidays(days, monthCells);
 
   const prevDate =
     view === "day"
@@ -268,8 +301,56 @@ export function MealCalendar({
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-due" /> Due
             </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-amber-400" /> Holiday
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-slate-400" /> Weekend (Fri–Sat)
+            </span>
           </span>
         </div>
+
+        {holidayCountryCodes.length > 0 ? (
+          <div className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-xs text-amber-950">
+            <p className="font-semibold">
+              Public holidays ({holidayCountryCodes.join(", ")}) in this {view}
+            </p>
+            {periodHolidays.length === 0 ? (
+              <p className="mt-1 text-amber-900/80">
+                None in this period. Try{" "}
+                <Link href={adminMealsHref("month", "2026-03-01")} className="font-medium underline">
+                  Mar 2026 (Eid)
+                </Link>{" "}
+                or{" "}
+                <Link href={adminMealsHref("month", "2026-10-01")} className="font-medium underline">
+                  Oct 2026 (Puja)
+                </Link>{" "}
+                for Bangladesh.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {periodHolidays.map(({ dateStr, holidays }) => (
+                  <li key={dateStr}>
+                    <Link
+                      href={adminMealsHref("day", dateStr)}
+                      className="font-medium underline-offset-2 hover:underline"
+                    >
+                      {formatDateShort(dateStr)}
+                    </Link>
+                    {": "}
+                    {holidays
+                      .map((h) => `${h.localName || h.name} (${h.countryCode})`)
+                      .join(" · ")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Choose holiday calendars in Settings to show public holidays.
+          </p>
+        )}
       </div>
 
       {view === "day" && days[0] ? (
@@ -277,12 +358,14 @@ export function MealCalendar({
           <div
             className={cn(
               "mb-4 flex items-center justify-between rounded-xl border border-border px-4 py-3",
+              days[0].isWeekend && !days[0].isToday && "bg-slate-100/90",
               days[0].isToday && "border-brand bg-brand-soft/40"
             )}
           >
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {days[0].dayLabel}
+                {days[0].isWeekend ? " · Weekend" : ""}
               </p>
               <p className="text-lg font-bold">{periodLabel}</p>
             </div>
@@ -295,6 +378,7 @@ export function MealCalendar({
               {days[0].dayNumber}
             </span>
           </div>
+          <HolidayStrip holidays={days[0].holidays} />
           <div className="flex max-w-3xl flex-col gap-2">
             <DayMealsList day={days[0]} />
           </div>
@@ -327,8 +411,13 @@ export function MealCalendar({
       {view === "month" && monthCells ? (
         <div className="min-h-[380px] flex-1 p-4">
           <div className="mb-2 grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-muted-foreground">
-            {["Sa", "Su", "Mo", "Tu", "We", "Th", "Fr"].map((d) => (
-              <div key={d}>{d}</div>
+            {CALENDAR_WEEKDAY_HEADERS.map((d, i) => (
+              <div
+                key={d}
+                className={cn(isWeekendGridColumn(i) && "font-semibold text-slate-600")}
+              >
+                {d}
+              </div>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1">
@@ -339,7 +428,13 @@ export function MealCalendar({
                 className={cn(
                   "flex min-h-[88px] flex-col rounded-lg border border-border p-2 text-left transition-colors hover:bg-secondary/60",
                   !cell.inMonth && "pointer-events-none border-transparent opacity-40",
-                  cell.isToday && cell.inMonth && "border-brand bg-brand-soft/50 ring-1 ring-brand"
+                  cell.inMonth &&
+                    cell.isWeekend &&
+                    cell.holidays.length === 0 &&
+                    !cell.isToday &&
+                    "border-slate-200 bg-slate-100/80",
+                  cell.isToday && cell.inMonth && "border-brand bg-brand-soft/50 ring-1 ring-brand",
+                  cell.inMonth && cell.holidays.length > 0 && "border-amber-300/80 bg-amber-50/80"
                 )}
               >
                 <span
@@ -350,6 +445,11 @@ export function MealCalendar({
                 >
                   {cell.dayNumber}
                 </span>
+                {cell.inMonth && cell.holidays.length > 0 ? (
+                  <span className="line-clamp-2 text-[9px] font-medium leading-tight text-amber-900">
+                    {cell.holidays[0].localName || cell.holidays[0].name}
+                  </span>
+                ) : null}
                 {cell.inMonth && cell.mealCount > 0 ? (
                   <>
                     <span className="text-[11px] font-semibold">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Download, UtensilsCrossed } from "lucide-react";
 import { listEmployees } from "@/services/employee-service";
 import { getSettings } from "@/lib/settings";
+import { getHolidayRecordForMealPicker } from "@/services/holiday-service";
 import {
   getDayMealCalendar,
   getMonthMealCalendar,
@@ -31,11 +32,18 @@ export default async function MealsPage({
     settings.employeeSharePct
   ).employeeChargePaisa;
 
-  const dayCalendar = view === "day" ? await getDayMealCalendar(anchorDate, chargePerMeal) : null;
+  const holidayCodes = settings.holidayCountryCodes;
+  const holidaysByDate = await getHolidayRecordForMealPicker(holidayCodes);
+  const dayCalendar =
+    view === "day" ? await getDayMealCalendar(anchorDate, chargePerMeal, holidayCodes) : null;
   const weekCalendar =
-    view === "week" ? await getWeekMealCalendar(anchorDate, chargePerMeal) : null;
+    view === "week"
+      ? await getWeekMealCalendar(anchorDate, chargePerMeal, holidayCodes)
+      : null;
   const monthCalendar =
-    view === "month" ? await getMonthMealCalendar(anchorDate, chargePerMeal) : null;
+    view === "month"
+      ? await getMonthMealCalendar(anchorDate, chargePerMeal, holidayCodes)
+      : null;
 
   const calendar = dayCalendar ?? weekCalendar ?? monthCalendar!;
 
@@ -76,6 +84,7 @@ export default async function MealsPage({
           employees={activeEmployees}
           mealPricePaisa={settings.mealPricePaisa}
           employeeSharePct={settings.employeeSharePct}
+          holidaysByDate={holidaysByDate}
         />
         <MealCalendar
           view={view}
@@ -85,6 +94,7 @@ export default async function MealsPage({
           monthCells={monthCalendar?.monthCells}
           summary={calendar.summary}
           chargePerMealPaisa={chargePerMeal}
+          holidayCountryCodes={holidayCodes}
         />
       </div>
     </div>

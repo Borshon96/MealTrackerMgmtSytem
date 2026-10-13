@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { bdtToPaisa } from "@/lib/money";
 import { DEFAULT_SETTINGS, SETTING_KEYS } from "@/lib/defaults";
+import {
+  defaultHolidayCountryCodes,
+  parseHolidayCountryCodes,
+} from "@/lib/holiday-codes";
 
 export { DEFAULT_SETTINGS, SETTING_KEYS };
 
@@ -11,6 +15,7 @@ export type AppSettings = {
   officeSharePct: number;
   weekStartDay: number;
   companyName: string;
+  holidayCountryCodes: string[];
 };
 
 export async function ensureDefaultSettings() {
@@ -39,6 +44,11 @@ export async function getSettings(): Promise<AppSettings> {
     officeSharePct,
     weekStartDay: Number(map[SETTING_KEYS.weekStartDay] ?? 0),
     companyName: map[SETTING_KEYS.companyName] ?? "Office Meal Tracker",
+    holidayCountryCodes: (() => {
+      const raw = map[SETTING_KEYS.holidayCountryCodes]?.trim();
+      const parsed = parseHolidayCountryCodes(raw || DEFAULT_SETTINGS[SETTING_KEYS.holidayCountryCodes]);
+      return parsed.length > 0 ? parsed : defaultHolidayCountryCodes();
+    })(),
   };
 }
 
@@ -48,6 +58,7 @@ export async function updateSettings(input: {
   officeSharePct: number;
   weekStartDay: number;
   companyName: string;
+  holidayCountryCodes: string;
 }) {
   if (input.employeeSharePct + input.officeSharePct !== 100) {
     throw new Error("Employee and office shares must total 100%");
@@ -62,6 +73,7 @@ export async function updateSettings(input: {
     [SETTING_KEYS.officeSharePct]: String(input.officeSharePct),
     [SETTING_KEYS.weekStartDay]: String(input.weekStartDay),
     [SETTING_KEYS.companyName]: input.companyName.trim() || "Office Meal Tracker",
+    [SETTING_KEYS.holidayCountryCodes]: input.holidayCountryCodes.trim() || "BD",
   };
 
   for (const [key, value] of Object.entries(updates)) {
